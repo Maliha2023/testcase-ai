@@ -1,0 +1,8 @@
+{
+  "name": "Remix TestCase AI",
+  "description": "AI-Powered Test Case Generator \u0026 Coverage Tracker for SQA engineering teams.",
+  "requestFramePermissions": [],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}
