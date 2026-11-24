@@ -2,120 +2,142 @@
 
 **AI-Powered Test Case Generator & Coverage Tracker**
 
-TestCase AI is a dark-mode Software Quality Assurance (SQA) engineering workspace designed for QA Engineers and QA Leads to synthesize structured test suites from product requirements, execute test runs, draft Markdown defect reports, and enforce automated Go / No-Go release gates.
+TestCase AI is a Software Quality Assurance (SQA) engineering workspace for QA Testers and QA Leads to synthesize structured test matrices from product requirements, execute test runs, draft Markdown defect reports, evaluate automated Go / No-Go release gates, and export Requirement Traceability Matrix (RTM) reports.
 
 ---
 
-## Overview & Architecture
+## Features
 
-TestCase AI follows a decoupled client-server architecture with zero external database setup:
+### 1. AI Test Case & Edge-Case Generator (Soft Sky-Blue Dashboard)
+- **Requirement Workbench**: Paste any User Story, API contract, or Acceptance Criteria (up to 4,000 characters with live character counter and validation).
+- **Quick Sample Presets**: Three built-in presets (**E-Commerce Checkout**, **2FA Login & Lockout**, **Payment Webhook**) for instant test generation.
+- **Structured 4-Category Synthesis**: Generates 8 structured test cases balanced across **Positive**, **Negative**, **Boundary**, and **Security** categories using `gemini-2.5-flash` with a strict JSON response schema.
+- **Selective Staging**: Review preconditions, numbered steps, priorities (`High`, `Medium`, `Low`), and expected results; select individual or all candidates and save them into your persisted Test Suite with sequential `TC-NNN` IDs.
+
+### 2. Test Execution & Coverage Tracker (Soft Lavender Dashboard)
+- **Live Coverage & Quality KPIs**: Real-time totals (`executed` vs. `untested`), Overall Pass Rate %, Failed Cases (including High-Priority failure count), Blocked Cases, and per-category progress bars across all 4 SQA categories.
+- **Search & Multi-Faceted Filtering**: Filter by execution status (`All`, `Untested`, `Passed`, `Failed`, `Blocked`), priority (`High`, `Medium`, `Low`), or live text search across test IDs, titles, requirement refs, and execution notes.
+- **Expandable Execution Cards**: Toggle one-click **Pass**, **Fail**, or **Block** status, expand details to inspect preconditions/steps/expected results, and record **Actual Result / Execution Notes** persisted automatically in `localStorage`.
+- **Instant Defect Drafts**: Marking any test case as **Failed** surfaces a **Copy Bug Report** action that copies a formatted Markdown issue report (metadata, preconditions, reproduction steps, expected vs. actual result) to the clipboard.
+
+### 3. Role-Based Governance (`QA Tester` vs. `QA Lead`)
+Switch roles at any time in the header **Role Switcher**:
+
+| Capability | QA Tester (`QA_TESTER`) | QA Lead (`QA_LEAD`) |
+| :--- | :---: | :---: |
+| Default Landing Dashboard | AI Generator | Coverage Tracker |
+| Generate & Save Test Cases | Allowed | Allowed |
+| Execute Tests (Pass / Fail / Block) & Edit Notes | Allowed | Allowed |
+| Copy Markdown Bug Reports | Allowed | Allowed |
+| Delete Individual Test Cases | Locked (`QA Lead Only`) | Unlocked |
+| Automated Release Gate & Approve / Revoke Sign-off | Read-Only / Locked | Unlocked |
+| Clear All Passed Tests & Clear Suite | Locked (`QA Lead Only`) | Unlocked |
+| Export Full RTM & Coverage CSV | — | Unlocked |
+
+### 4. Automated Go / No-Go Release Gate & RTM Export
+- **Automated Gate Evaluation**:
+  - `GO`: Overall pass rate `>= 85%` and `0` High-priority failures.
+  - `NO-GO`: Below `85%` pass rate or `>= 1` High-priority failure, with explicit blocker and advisory warning callouts.
+  - `PENDING`: Empty suite or zero executed test cases.
+- **Release Sign-Off**: QA Leads can record or revoke formal release approval (automatically invalidated if subsequent test changes break gate criteria).
+- **RFC-4180 CSV Export**: Downloads a full Requirement Traceability Matrix and coverage summary CSV.
+
+### 5. One-Click Demo Dataset
+Click **Load Demo Data** in the header to load a 10-case 2FA & Lockout test suite across **Passed**, **Failed**, **Blocked**, and **Untested** states—ideal for evaluating all execution, defect-drafting, RBAC, and release-gate workflows without an API key.
+
+---
+
+## Architecture & Tech Stack
+
+### System Flow
 
 ```text
-Browser (React 19 + TypeScript + Tailwind CSS)
-  ├── Local Persistence (localStorage)
+Browser (React 19 + TypeScript + Tailwind CSS v4)
+  ├── Local Persistence (window.localStorage)
   │     └── Test Suite, Execution Notes, Active Requirement, Role & Sign-off
   └── POST /api/generate-test-cases
         │
         ▼
 Express Server (server.ts)
   ├── Security Headers (X-Content-Type-Options, X-Frame-Options, Referrer-Policy)
-  ├── 50kb JSON Payload Cap & Control-Character Sanitization (4,000-char limit)
-  ├── In-Memory IP Rate Limiter (15 requests / minute)
-  └── @google/genai SDK (gemini-2.5-flash + strict JSON responseSchema)
+  ├── 50kb JSON Payload Cap & Control-Character Sanitization (4,000-char max)
+  ├── In-Memory IP Rate Limiter (15 requests / 60s)
+  └── @google/genai SDK (gemini-2.5-flash + typed JSON responseSchema)
 ```
 
-- **Server-Side AI Proxy**: All Gemini API calls execute exclusively inside `server.ts`. The browser communicates only with `POST /api/generate-test-cases`.
-- **Zero-Database Persistence**: Test suites, execution statuses, actual result notes, active requirements, and release sign-offs persist automatically in browser `localStorage`.
-- **Decoupled Pure Domain Logic**: Pass-rate math, category coverage scoring, Go / No-Go release gating, Markdown defect generation, and RFC-4180 CSV export live in `src/utils/coverageLogic.ts` and are covered by unit tests.
+- **Server-Side AI Proxy**: In development (`npm run dev`) and production (`npm start`), Gemini calls execute inside `server.ts` using `GEMINI_API_KEY` from environment variables.
+- **Static-Hosting Fallback**: If `/api/generate-test-cases` is unreachable (e.g., `404`/`405` on static-only hosting), `src/services/testCaseGenerator.ts` supports an optional `VITE_GEMINI_API_KEY` client fallback with client-side rate limiting.
+- **Decoupled Pure Logic**: Metrics math, release-gate scoring, Markdown bug formatting, RFC-4180 CSV serialization, input sanitization, ID allocation, and rate limiting are isolated in `src/utils/coverageLogic.ts` and unit-tested with `node:test`.
+
+### Tech Stack
+- **Frontend**: React 19, TypeScript, Tailwind CSS v4 (`@tailwindcss/vite`), Lucide Icons (`lucide-react`), Motion (`motion`), Vite 8
+- **Backend**: Node.js, Express 4, `@google/genai` (`gemini-2.5-flash`), `dotenv`, `tsx`
+- **Persistence**: Browser `localStorage` (zero external database setup required)
+- **Testing**: Node built-in test runner (`tsx --test`)
+
+### Project Structure
+
+```text
+├── server.ts                         # Express API proxy, security middleware, Vite dev/static serving
+├── index.html                        # HTML entry point & Google Fonts (Plus Jakarta Sans, DM Sans, JetBrains Mono)
+├── .env.example                      # Environment variable template (GEMINI_API_KEY, PORT)
+├── src/
+│   ├── App.tsx                       # Root state, localStorage persistence, RBAC & view orchestration
+│   ├── index.css                     # Tailwind CSS v4 entry & base typography/scrollbar styling
+│   ├── types/qa.ts                   # Shared TypeScript interfaces and status/category/role types
+│   ├── data/samples.ts               # Sample requirement presets and 10-case 2FA demo suite
+│   ├── services/testCaseGenerator.ts # API client with static-hosting fallback
+│   ├── utils/
+│   │   ├── coverageLogic.ts          # Pure coverage metrics, release gate, CSV/Markdown & validation logic
+│   │   └── coverageLogic.test.ts     # Unit tests (13 test cases via node:test)
+│   └── components/
+│       ├── Header.tsx                # Top bar, dashboard view tabs, role switcher & workspace banner
+│       ├── GeneratorView.tsx         # AI Generator dashboard (soft sky-blue theme)
+│       ├── TrackerView.tsx           # Coverage Tracker dashboard (soft lavender theme)
+│       ├── MetricsBar.tsx            # KPI strip & category coverage progress bars
+│       ├── ReleaseControlPanel.tsx   # Automated Go/No-Go gate, sign-off, CSV export & cleanup controls
+│       ├── TestCaseCard.tsx          # Expandable test execution card & instant defect draft strip
+│       └── BadgeHelpers.tsx          # Status, category, priority, and QA Lead badges
+```
 
 ---
 
-## Key Features
-
-### 1. AI Test Case & Edge-Case Generator
-- Paste any User Story, Feature Requirement, or Acceptance Criteria (up to 4,000 characters with live counter and validation).
-- Includes 3 one-click sample requirement presets (**E-Commerce Checkout**, **2FA Login & Lockout**, **Payment Webhook**) for rapid testing.
-- Synthesizes structured test cases across four SQA categories: **Positive**, **Negative**, **Boundary**, and **Security**.
-- Every generated case includes a sequential `id` (e.g., `TC-101`), `title`, `category`, `priority` (`High` | `Medium` | `Low`), `preconditions`, numbered `steps`, and `expectedResult`.
-- Select individual or all staged candidates and save them directly to the persisted Test Suite.
-
-### 2. Interactive Test Execution & Coverage Tracker
-- **Live Coverage & Quality Metrics**: Real-time Total Test Cases, Overall Pass Rate %, Failed Count (with High-Priority failure tracking), Blocked Count, and per-category coverage progress bars.
-- **Filtering & Search**: Filter by execution status (`All`, `Untested`, `Passed`, `Failed`, `Blocked`), priority (`High`, `Medium`, `Low`), or live text search across IDs, titles, and execution notes.
-- **Expandable Execution Cards**: Inspect preconditions, numbered steps, and expected results; log **Actual Result / Execution Notes**; and update execution status in one click (**Pass**, **Fail**, **Block**).
-- **Instant Defect Draft**: Marking any test case as **Failed** surfaces a **Copy Bug Report** button that copies a formatted Markdown defect report (Test ID, Priority, Category, Preconditions, Steps, Expected vs. Actual Result) directly to the clipboard.
-
-### 3. Role-Based Access Control (QA Tester vs. QA Lead)
-Switch roles at any time using the top header **Role Switcher** to experience role-scoped views, theming, and permissions:
-
-| Capability | QA Tester Mode (Blue Theme) | QA Lead Mode (Purple Theme) |
-| :--- | :---: | :---: |
-| Default Landing View | AI Test Generator | Coverage & Execution Tracker |
-| Workspace Banner | QA Tester Workspace | `Lead Mode Active` Banner |
-| Generate & Save Test Cases | Allowed | Allowed |
-| Execute Tests (Pass / Fail / Block) & Edit Notes | Allowed | Allowed |
-| Copy Markdown Bug Reports | Allowed | Allowed |
-| Delete Individual Test Cases | Locked (`QA Lead Only`) | Unlocked |
-| Automated Go / No-Go Release Gate & Approve Release | Read-Only / Locked | Unlocked |
-| Clear All Passed Tests & Clear Suite | Locked (`QA Lead Only`) | Unlocked |
-| Export Full RTM & Coverage CSV | — | Unlocked |
-
-### 4. One-Click Demo Data
-Click **Load Demo Data** in the top header at any time to populate a realistic 10-case 2FA & Lockout test suite distributed across **Passed**, **Failed**, **Blocked**, and **Untested** states—no API key required to evaluate the execution tracker, defect drafts, RBAC permissions, release gates, or CSV exports.
-
----
-
-## Security Controls
-
-- **Strict Server-Side Key Isolation**: `GEMINI_API_KEY` is read exclusively from `process.env` in `server.ts`. The `@google/genai` SDK is never imported in client-side code.
-- **Security HTTP Headers**: Express applies Helmet-style headers including `X-Content-Type-Options: nosniff`, `X-Frame-Options: DENY`, and `Referrer-Policy: no-referrer`, and disables `X-Powered-By`.
-- **Payload & Input Hardening**: Express enforces a `50kb` JSON body size cap (`HTTP 413` on overflow). Server-side validation rejects empty inputs, caps requirements at `4,000` characters (`HTTP 400`), and strips unsafe ASCII control characters.
-- **In-Memory IP Rate Limiting**: `POST /api/generate-test-cases` enforces a limit of `15 requests/minute` per client IP (`HTTP 429` with `Retry-After` and `X-RateLimit-*` headers).
-- **Strict Structured Schema Output**: Gemini is invoked with `responseMimeType: "application/json"` and a typed `responseSchema`, followed by server-side runtime normalization and enum validation without dynamic code execution.
-
----
-
-## Tech Stack
-
-- **Frontend**: React 19, TypeScript, Tailwind CSS v4, Lucide Icons, Vite
-- **Backend**: Express, `@google/genai` (`gemini-2.5-flash`), `tsx`, `dotenv`
-- **Persistence**: Browser `localStorage`
-- **Testing**: Node.js built-in test runner (`node:test` & `node:assert/strict`) via `tsx`
-
----
-
-## Quick Start Guide
+## Setup & Installation
 
 ### Prerequisites
-- Node.js `>= 20` (recommended `22+`)
-- npm `>= 10`
-- A Gemini API key (optional if evaluating with Demo Data; required for live AI generation)
+- **Node.js** `>= 20` (Node `22.14+` recommended for running `server.ts` cleanly)
+- **npm** `>= 10`
+- A **Gemini API Key** (required for live AI test generation; optional if evaluating with **Load Demo Data**)
 
-### 1. Install dependencies
+### 1. Install Dependencies
 ```bash
 npm install
 ```
 
-### 2. Configure environment variables
-Copy `.env.example` to `.env` and add your Gemini API key:
+### 2. Configure Environment Variables
+No secrets are hardcoded in the repository. Create a local `.env` file from `.env.example` (already ignored by `.gitignore`):
+
 ```bash
 cp .env.example .env
 ```
 
-Edit `.env`:
+Update `.env` with your Gemini API key:
+
 ```env
 GEMINI_API_KEY="your-gemini-api-key"
 PORT=3000
 ```
 
-### 3. Start the development server
+> **Note:** Keep `.env` private—`.gitignore` ignores `.env`, `.env.local`, `.env.*.local`, and `.env*` while tracking `.env.example`.
+
+### 3. Run in Development
 ```bash
 npm run dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) in your browser.
+This starts the Express server with Vite middleware at [http://localhost:3000](http://localhost:3000).
 
-### Production Build
+### 4. Production Build & Start
 ```bash
 npm run build
 NODE_ENV=production npm start
@@ -123,34 +145,28 @@ NODE_ENV=production npm start
 
 ---
 
-## Instant Evaluation Guide (No API Key Required)
+## Scripts
 
-You can evaluate the full SQA workflow in under 60 seconds:
-
-1. **Load Demo Data**: Click **Load Demo Data** in the top-right header to seed 10 realistic test cases across Passed, Failed, Blocked, and Untested states.
-2. **Inspect QA Tester Restrictions**: Open **Coverage Tracker** while in **QA Tester** mode (blue banner). Notice that **Approve Release**, **Clear Suite**, and **Delete** controls are locked with `QA Lead Only` indicators, while test execution and note editing remain active.
-3. **Test Instant Defect Drafts**: Filter by **Failed**, expand `TC-104`, edit the **Actual Result / Execution Notes**, and click **Copy Bug Report** to copy a ready-to-paste Markdown issue report.
-4. **Switch to QA Lead Mode**: Click **QA Lead** in the header **Role Switcher**. The workspace shifts to the purple **Lead Mode Active** theme and unlocks the **QA Lead Release Control Panel** (currently showing **NO-GO — Release Blocked** due to a high-priority failure and sub-85% pass rate).
-5. **Trigger Automated GO Gate & Export RTM**: Reset filters to **All**, mark `TC-104`, `TC-108`, and `TC-109` as **Pass** to watch the pass rate reach `90%` and the indicator flip live to **GO — Ready for Release**. Click **Approve Release** and **Export Full RTM & Coverage CSV** to download the full traceability report.
+| Command | Description |
+| :--- | :--- |
+| `npm run dev` | Starts `server.ts` in development mode with Vite middleware on port `3000` |
+| `npm run build` | Builds the React + Vite frontend bundle into `dist/` |
+| `npm start` | Runs `server.ts` to serve `dist/` and `/api/*` routes |
+| `npm test` | Runs unit tests in `src/utils/coverageLogic.test.ts` via `tsx --test` |
+| `npm run lint` | Runs TypeScript type checking (`tsc --noEmit`) |
+| `npm run clean` | Removes `dist/` and `server.js` build artifacts |
 
 ---
 
-## Running Unit Tests
+## Usage & Quick Evaluation
 
-Unit tests verify pass-rate calculations, category coverage scoring, automated Go / No-Go release gate thresholds, Markdown defect formatting, RFC-4180 CSV escaping, and requirement input sanitization:
-
-```bash
-npx tsx --test src/utils/coverageLogic.test.ts
-```
-
-Or via npm script:
-
-```bash
-npm test
-```
-
-Type-check the entire project:
-
-```bash
-npm run lint
-```
+1. **Generate Test Cases (AI Generator)**:
+   - Select one of the quick presets (**E-Commerce Checkout**, **2FA Login & Lockout**, or **Payment Webhook**) or paste your own requirement.
+   - Click **Generate Test Cases**, review the staged candidates, and click **Save to Test Suite**.
+2. **Evaluate Without an API Key (Load Demo Data)**:
+   - Click **Load Demo Data** in the header to seed 10 realistic 2FA test cases across all execution states.
+3. **Execute & Draft Defect Reports (Coverage Tracker)**:
+   - In **QA Tester** mode, switch to **Coverage Tracker**, toggle **Pass / Fail / Block**, expand a failed card (e.g., `TC-104`), update execution notes, and click **Copy Bug Report** to copy a Markdown defect report.
+4. **Release Sign-Off & RTM Export (QA Lead)**:
+   - Switch the header **Role Switcher** to **QA Lead** to unlock **Approve Release**, **Clear All Passed Tests**, **Clear Suite**, test case deletion, and **Export Full RTM & Coverage CSV**.
+   - Mark `TC-104`, `TC-108`, and `TC-109` as **Pass** to watch the pass rate cross the `85%` threshold (`90%` with `0` High-priority failures) and flip the release gate to **GO — Ready for Release**.
